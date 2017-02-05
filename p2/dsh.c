@@ -258,7 +258,7 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
 
         else if (!strcmp("bg", argv[0])) {
 
-              printf("In bg builtin command function \n");
+//              printf("In bg builtin command function \n");
 
               // Case1: bg
               // Resume the execution in bg mode for the last job stopped. Note that pid is not mentioned.
@@ -272,7 +272,7 @@ bool builtin_cmd(job_t *last_job, int argc, char **argv)
               else if (argc == 2)
               {
                 pid_t bg_pid = atoi(argv[1]); // Fetching the pid
-printf("lo");
+//printf("lo");
                 seize_tty(getpid()); // Assign terminal to dsh 
 
                 job_t *job = NULL;
@@ -283,12 +283,13 @@ printf("lo");
               {
                 perror(" bg process failed - Invalid number of parameters");
               }
+              return true;
 
         }
 
         else if (!strcmp("fg", argv[0])) {
 
-              printf("In fg builtin command function \n");
+//              printf("In fg builtin command function \n");
 
               // Case1: fg
               // Resume the execution of the last job stopped. Note that pid is not mentioned.
@@ -313,6 +314,7 @@ printf("lo");
               {
                 perror("fg process failed - Invalid number of parameters");
               }
+              return true;
 
         }
 

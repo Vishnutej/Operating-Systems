@@ -1,0 +1,290 @@
+Lab #2 (dsh) FAQ version of 1/29/14
+
+---------------------------------------------------------------------
+Q. What do the XXX system call, the YYY library routine, or the ZZZ
+command do?  What can cause them to fail?
+
+A. You can read manual pages for any Unix keyword by typing "man
+<keyword>" in a properly installed Unix system, or into google.  It is
+useful to look at the manual pages for the system calls you are using.
+Check the error returns from all syscalls (use perror), and look at
+the manpage if you want to understand what a given error return means.
+
+---------------------------------------------------------------------
+
+Q: What exactly do we have to implement?
+
+A: You are asked to fill in the code to launch child processes, set
+them up according to the directives on the command line, and use wait
+(or waitpid) to reap and report their status when they complete.  The
+directives on the command line may include: names of programs to run
+in the child process, arguments for those programs, stdout/stdin
+redirection, and pipes.  You must implement the builtin commands cd,
+fg, jobs and quit.  Support for background jobs and the builtin "bg"
+is optional.
+
+Integrate your code carefully with the supplied code, which has much
+of the supporting infrastructure, including a command-line parser and
+some code to manage process groups and their access to the controlling
+terminal.  Be sure to read the handout carefully.
+
+In the end, your shell should behave like the dsh-example (with or
+without the optional features).  If there is something you are not
+sure about, try it in dsh-example.  If your shell behaves the same as
+dsh-example, then you won't lose any points for the behavior.
+
+---------------------------------------------------------------------
+
+Q. I'm trying to run the dsh-example program, but the error "cannot
+execute binary file" always comes up.
+
+A: It's a Linux executable.  You can run it on one of the CS department
+linux machines (login.cs.duke.edu).  It should run on any reasonably
+recent Linux system, but it may have shared library dependencies.  To
+run on Mac OSX, use the "dsh-osx" executable.  Be sure
+to run the right executable for your platform.
+
+---------------------------------------------------------------------
+
+Q. How can I get all the source files?
+
+A. Download the lab2.zip file from the website and use the unzip command
+to unpack it: "unzip lab2.zip" creates (or overwrites) a directory ./lab2.
+Then go in there and type "make".
+
+---------------------------------------------------------------------
+
+Q. There are 500 lines of C code here.  What do I really need to look
+at and/or modify?
+
+A. You shouldn't have to touch the command parser in parse.c, or the
+helper functions in helper.c.  That leaves 80 lines of code in dsh.c.
+
+dsh.c reads command lines and parses them.  The parse result for a
+command line is a list of job structures, or NULL if the command line
+has an error.  Each job structure has a pointer to a list of process
+structures.  The job and process structures have fields your code can
+look at to understand the command line, and fields that your code may
+use to track the status of each process and job.  It is your
+responsibility to free these structures when each job is over (e.g.,
+using delete_job in helper.c).  You may also find print_job to be
+useful to understand what is in the structures.
+
+Your mission is to modify dsh.c to fill in the missing pieces,
+primarily in spawn_job(), main(), and builtin_cmd() in dsh.c.
+
+---------------------------------------------------------------------
+
+Q: What is the difference between forking and spawning a process?
+
+A: In Unix a program running in a process spawns another process by
+invoking a fork system call, typically followed by an exec (execve,
+execvp,...) in the spawned (child) process.
+ 
+Other systems might spawn processes in different ways.  For example,
+here is a page on the classic Win32 syscall to create a process:
+http://mandoo.dyndns.org/ntcreateprocess
+ 
+So: "spawning" is a general concept/operation, and fork is a primitive
+to do it in one particular class of systems (Unix).
+
+---------------------------------------------------------------------
+
+Q.  I wrote some code to exec a child program, but when I try to use
+standard commands (like ls, wc, cat and sort) exec fails with "no such
+file or directory".
+
+A: Most exec* variants interpret pathnames relative to the shell's
+current directory, unless an absolute pathname is used (like
+"/bin/cat").  So "cat" won't work if you don't have an executable file
+called "cat" in the current directory.
+
+To save yourself the trouble of knowing where all the standard utility
+programs are and typing their long pathnames, you can use the exec*
+variant called execvp.  That variant will systematically search all of
+the directories listed in your $PATH environment variable, in order,
+until it finds the named executable.  Real shells use execvp or its
+equivalent.  You have the $PATH environment variable set up already
+for your real shell, and your dsh will inherit it.  To see it, type
+"echo $PATH" into your real shell.
+
+---------------------------------------------------------------------
+
+Q. I want to write some code to wait*() for child processes, but
+wait*() is a confusing mess with multiple variants.  What should I do?
+
+A. We recommend that you use waitpid().  It serves all purposes needed
+in this lab, including checking the status of background processes
+(optional) without blocking.  There is a summary of waitpid() and its
+options in the slides.
+
+---------------------------------------------------------------------
+
+Q.  Something is broken when I try command lines like "cat <infile|cat
+>outfile".
+
+A. Please use spaces to separate tokens on your command line.  In
+particular, it appears that the parser expects a space after the file
+name for a <> redirection.  So try something like "cat <infile | cat
+>outfile".
+ 
+---------------------------------------------------------------------
+
+Q. Why is "cd" (change directory) a builtin?  Why doesn't it spawn a
+child process?
+
+A. The purpose of "cd" is to change the directory of your shell
+process and not some child.  The chdir system call changes the current
+directory of the calling process.  Therefore the system call (chdir)
+must be done in the context of the shell process and not some child:
+if the shell forks a child to do the chdir, then it won't work: the
+parent process is not affected by a chdir in a child.
+
+---------------------------------------------------------------------
+
+Q. What is tcsetpgrp and why is it making my life miserable?  I keep
+getting "tcsetpgrp failure" messages when I try use pipelines.
+
+A.  tcsetpgrp makes a system call that assigns control of the terminal
+to a process group named by a pgid (process group ID), so that
+processes in that group receive any input and signals from the
+terminal.  The initial code we supplied to you has a tcsetpgrp call in
+the procedure called seize_tty.  In the initial code, a spawned
+foreground child seizes the tty for its group, and the dsh seizes it
+back after a foreground job completes.  All foreground children do
+this because we don't know which process in a pipeline will run first,
+and we want it done as soon as possible.
+
+If tcsetpgrp fails then the likely reason is that the pgid is no
+longer valid.  Why is the pgid no longer valid?  Because the process
+group leader, the first process in the pipeline, has exited and been
+reaped by the parent calling wait*.  (Note: on some incorrect
+Unix-like platforms the pgid may become invalid when the leader exits,
+even before your shell reaps the dead child.  Please tell us if you
+see this.)
+
+If this is happening to you, your shell likely has a very common bug:
+it waits for each child in the pipeline to complete before launching
+the next process in the pipeline.  The processes in a pipeline should
+run concurrently.
+
+Note: this circumstance may also cause setpgid to fail on a child.
+
+I recommend that you do your initial pipe debugging with "cat | cat",
+"cat | cat | cat", etc..  Those cats will not die until you hit ctrl-d
+(eof) or ctrl-c (force-quit) at the terminal.  Also, don't forget to
+try ctrl-z (suspend) and "fg" to resume!
+
+---------------------------------------------------------------------
+
+Q. What is setpgid and why is it making my life miserable?  I found a
+call to setpgid in the initial code that wasn't checking the error
+return, and when I checked it, I found that it was failing, e.g., with
+"set_child_pgid failed: Operation not permitted" or something similar.
+Could that be causing my problems with XXX?
+
+A. setpgid makes a system call that associates a process (named with a
+process ID) to a process group (named with a process group ID).  You
+can read about it at http://linux.die.net/man/3/setpgid.
+
+In the supplied initial code, each spawned child does a setpgid to set
+its process group ID to associate itself with its job.  The process
+group ID of a job is the process ID of the first process in the job.
+That process is called the process group leader.  The parent also
+makes a setpgid call to associate each spawned child with its job.
+This is a quirk of Unix: we don't know whether the parent or child
+process will run first, so whoever gets there first does the setpgid.
+
+On some platforms the second setpgid call can fail.  This is not
+necessarily a problem in itself, since the operation was already done.
+That is why the error return from setpgid is ignored.  Setpgid is the
+"exception that proves the rule", where the rule is "always check the
+error returns from your system calls".
+
+However, setpgid can fail for other reasons.  In particular, a setpgid
+failure may have the same underlying cause as a tcsetpgrp failure (see
+above).
+ 
+---------------------------------------------------------------------
+
+Q: How do batch mode shells work?  Do I have to write code to read
+commands from a file?  And what if I want to type input to one of the
+commands executed in the batch file?
+
+A: What you want to do is run dsh using redirection so that its
+standard input is the file of commands.  Then it will happily read its
+commands from the file, and not from the terminal.  Like this:
+
+terminal> ./dsh < file-containing-commands.txt
+...[dsh executes commands]...
+terminal>
+
+The commands in the batch file are parsed by the parser we have
+supplied in exactly the same way as they are parsed for interactive
+shells.  So you don't need to write any code to parse the commands.
+
+Try executing dsh in batch mode under an interactive dsh!
+
+Note: A program running under a batch-mode shell can never accept
+input from the tty.  E.g., If there's a cat command without argument
+(implying it needs to read from the standard input) inside a batch
+file, it will read nothing (immediate end-of-file).
+
+---------------------------------------------------------------------
+ 
+Q. I wrote some code to wait*() but it is failing with "interrupted
+system call".  What's going on?
+
+A.  Unix kernels send a signal to a parent process when the child
+exits.  The signal is called SIGCHLD (child exited) and the default
+action is to ignore it.  However, if a process receives a signal while
+its main thread is sleeping in a system call, it is common to wake up
+the thread and return from the system call to give the process a
+chance to respond to the signal.  This is a crucial mechanism that
+enabled Unix processes to respond to asynchronous events as they
+occur, without using multiple threads.  (It is discussed in the
+slides)
+
+When a system call is interrupted by a signal, such as SIGCHLD, the
+system call "fails" and returns the errno EINTR, which perror displays
+as "Interrupted system call."  It is possible that you might also see
+a command line read fail with EINTR.  Note: EINTR is not to be
+confused with processor interrupts, although the concept is similar:
+in this case the "interrupt" is a signal that is asynchronous with
+thread execution.
+
+In general, if a system call is interrupted by a signal, and you want
+to retry it, the correct thing to do is just to invoke the system call
+again in a loop until it returns with something other than EINTR.
+
+Not all kernels behave the same way with regard to EINTR.  For
+example, the default action of SIGCHLD is that the process ignores it.
+Why wake up a sleeping thread to let it handle a signal that it will
+ignore anyway?  Some systems will interrupt a system call for an
+ignored signal, and some will not.
+ 
+Unfortunately, there are some elements of the Unix process model that
+are tricky and not as clean as we would like and/or not as standard as
+we would like.  In particular, handling asynchronous events is
+difficult to get right, and the Unix signal abstraction was redesigned
+multiple times over decades before people finally figured out how to
+do it.  As a result, the specifics of signals differ from one system
+to the next.  I'm going to try to stay away from all of that, but it
+is unavoidable that we will bump into it now and then.  As I like to
+say: sometimes you can't ignore signals!
+
+---------------------------------------------------------------------
+
+Q.  This sucks!  I hate this!  I just want to sleep!  What should I do?
+
+A. Get some sleep, then think about your code in the shower.  If that
+doesn't work, then read your code carefully and think about what it is
+really doing, and what you really meant for it to do.
+
+---------------------------------------------------------------------
+
+Q. But I can't sleep because it's due tonight!  What should I do?
+
+A. Don't let this happen to you!  Start early!
+
+<EOF>
